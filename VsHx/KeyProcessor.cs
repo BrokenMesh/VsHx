@@ -1,5 +1,6 @@
 ﻿using Microsoft.VisualStudio.Text;
 using Microsoft.VisualStudio.Text.Editor;
+using Microsoft.VisualStudio.Text.Operations;
 using System;
 using System.Collections.Generic;
 using System.Windows.Input;
@@ -10,23 +11,40 @@ namespace VsHx
     internal sealed class HxKeyProcessor : KeyProcessor
     {
         private readonly IWpfTextView _view;
+        private readonly ITextStructureNavigator _navigator;
 
-        private readonly List<Key> MotionsKeys = new List<Key>()
+        private readonly List<Key> SimpleMotionsKeys = new List<Key>()
         {
             Key.K, Key.I, Key.J, Key.L,
         };
 
+        private readonly List<Key> ComplexMotionsKeys = new List<Key>()
+        {
+            Key.W, Key.B, Key.E, Key.X
+        };
+
+        private readonly List<Key> InsertKeys = new List<Key>()
+        {
+            Key.C, Key.O
+        };
+
+        private readonly List<Key> ManipulationKeys = new List<Key>()
+        {
+            Key.D,
+        };
+
         private readonly List<Key> ActionKeys = new List<Key>()
         {
-            Key.G
+            Key.G,
         };
 
 
-        public HxKeyProcessor(IWpfTextView view)
+        public HxKeyProcessor(IWpfTextView view, ITextStructureNavigator navigator)
         {
             System.Diagnostics.Debug.WriteLine("HxKeyProcessor attached");
 
             _view = view;
+            _navigator = navigator;
         }
 
         public override void KeyDown(KeyEventArgs e)
@@ -50,6 +68,9 @@ namespace VsHx
                 return;
             }
 
+            bool isShift = Keyboard.Modifiers == ModifierKeys.Shift;
+            bool isAlt = Keyboard.Modifiers == ModifierKeys.Alt;
+
             // Escape -------------------------------------------------------
             if (e.Key == Key.Escape)
             {
@@ -67,16 +88,65 @@ namespace VsHx
             }
 
             // Action Keys ----------------------------------------------------
-            if (ActionKeys.Contains(e.Key)) 
-            { 
+            if (ActionKeys.Contains(e.Key))
+            {
                 SetActionKey(e.Key);
                 return;
             }
 
-            // Simple Motion Keys ------------------------------------------------------
-            if (MotionsKeys.Contains(e.Key))
+            // Insert Keys ------------------------------------------------------
+            if (InsertKeys.Contains(e.Key))
             {
-                SetSelectionMode(Keyboard.Modifiers == ModifierKeys.Shift);
+                switch (e.Key)
+                {
+                    case Key.C: Change(); break;
+                    case Key.O: Open(!isShift); break;
+                }
+
+                e.Handled = true;
+                return;
+            }
+
+            // Manipulation Keys ------------------------------------------------------
+            if (ManipulationKeys.Contains(e.Key))
+            {
+                int num = GetNumInput();
+
+                switch (e.Key)
+                {
+                    case Key.D: DeleteCurrentLine(num * (isShift ? -1 : 1)); break;
+                }
+
+                ResetNumInput();
+                SetActionKey(null);
+                e.Handled = true;
+                return;
+            }
+
+            // Complex Motion Keys ------------------------------------------------------
+            if (ComplexMotionsKeys.Contains(e.Key))
+            {
+                SetSelectionMode(isShift);
+                int num = GetNumInput();
+
+                switch (e.Key)
+                {
+                    case Key.W: MoveWordForward(num); break;
+                    case Key.B: MoveWordBackward(num); break;
+                    case Key.E: MoveWordEnd(num); break;
+                    case Key.X: SelectCurrentLine(num * (isShift ? -1 : 1)); break;
+                }
+
+                ResetNumInput();
+                SetActionKey(null);
+                e.Handled = true;
+                return;
+            }
+
+            // Simple Motion Keys ------------------------------------------------------
+            if (SimpleMotionsKeys.Contains(e.Key))
+            {
+                SetSelectionMode(isShift);
 
                 int num = GetNumInput();
 
@@ -92,6 +162,8 @@ namespace VsHx
                     case Key.I: MoveVertical(-1 * num); break;
                     case Key.J: MoveHorizontal(-1 * num); break;
                     case Key.L: MoveHorizontal(1 * num); break;
+                    case Key.W: MoveWordForward(num); break;
+                    case Key.B: MoveWordBackward(num); break;
                 }
 
                 ResetNumInput();
@@ -138,20 +210,177 @@ namespace VsHx
             HxState.StateHasChanged();
         }
 
-        public override void TextInput(TextCompositionEventArgs e)
+        private void Open(bool below)
         {
-            if (!HxState.Enabled)
-                return;
+            var caret = _view.Caret;
+            var buffer = _view.TextBuffer;
 
-            e.Handled = true;
+            var line = caret.Position.BufferPosition.GetContainingLine();
+            var insertPos = below ? line.EndIncludingLineBreak : line.Start;
+
+            using (var edit = buffer.CreateEdit())
+            {
+                edit.Insert(insertPos, Environment.NewLine);
+                edit.Apply();
+            }
+
+            _view.Caret.MoveTo(insertPos);
+
+            ToggleHxMode();
         }
 
-        public override void PreviewTextInput(TextCompositionEventArgs e)
+        private void Change()
         {
-            if (!HxState.Enabled)
-                return;
+            var sel = _view.Selection;
+            var buffer = _view.TextBuffer;
 
-            e.Handled = true;
+            if (sel.IsEmpty) return;
+
+            using (var edit = buffer.CreateEdit())
+            {
+                foreach (var span in sel.SelectedSpans) edit.Delete(span);
+                edit.Apply();
+            }
+
+            var start = sel.Start.Position;
+            sel.Clear();
+            _view.Caret.MoveTo(start);
+
+            ToggleHxMode();
+        }
+
+        private void DeleteCurrentLine(int count)
+        {
+            var sel = _view.Selection;
+            var buffer = _view.TextBuffer;
+            var caret = _view.Caret;
+
+            if (!sel.IsEmpty)
+            {
+                using (var edit = buffer.CreateEdit())
+                {
+                    foreach (var span in sel.SelectedSpans) edit.Delete(span);
+                    edit.Apply();
+                }
+
+                var pos = sel.Start.Position;
+                sel.Clear();
+                caret.MoveTo(pos);
+                return;
+            }
+
+            var snapshot = buffer.CurrentSnapshot;
+            var posPoint = caret.Position.BufferPosition;
+
+            if (posPoint.Position >= snapshot.Length) return;
+
+            using (var edit = buffer.CreateEdit())
+            {
+                edit.Delete(new SnapshotSpan(posPoint, 1));
+                edit.Apply();
+            }
+
+            caret.MoveTo(new SnapshotPoint(buffer.CurrentSnapshot, posPoint.Position));
+        }
+
+        private void SelectCurrentLine(int count)
+        {
+            var snapshot = _view.TextSnapshot;
+            var caret = _view.Caret;
+            var sel = _view.Selection;
+
+            var line = caret.Position.BufferPosition.GetContainingLine();
+            int startLine = line.LineNumber;
+            int endLine = Clamp(startLine + count - 1, 0, snapshot.LineCount - 1);
+
+            var start = snapshot.GetLineFromLineNumber(startLine).Start;
+            var end = snapshot.GetLineFromLineNumber(endLine).EndIncludingLineBreak;
+
+            HxState.SelectionMode = true;
+
+            if (sel.IsEmpty)
+            {
+                sel.Select(new VirtualSnapshotPoint(start), new VirtualSnapshotPoint(end));
+            }
+            else
+            {
+                sel.Select(sel.AnchorPoint, new VirtualSnapshotPoint(end));
+            }
+
+            MoveCaret(end);
+        }
+
+        private void MoveWordEnd(int count)
+        {
+            var caret = _view.Caret;
+            var snapshot = caret.Position.BufferPosition.Snapshot;
+            var pos = caret.Position.BufferPosition;
+
+            for (int i = 0; i < count; i++)
+            {
+                while (pos.Position < snapshot.Length && char.IsWhiteSpace(snapshot[pos]))
+                {
+                    pos = pos + 1;
+                }
+
+                if (pos.Position >= snapshot.Length) break;
+
+                var extent = _navigator.GetExtentOfWord(pos);
+                if (!extent.IsSignificant) break;
+
+                pos = extent.Span.End;
+            }
+
+            MoveCaret(pos);
+        }
+
+
+        private void MoveWordForward(int count)
+        {
+            var caret = _view.Caret;
+            var snapshot = caret.Position.BufferPosition.Snapshot;
+            var pos = caret.Position.BufferPosition;
+
+            for (int i = 0; i < count; i++)
+            {
+                var extent = _navigator.GetExtentOfWord(pos);
+
+                if (extent.IsSignificant && extent.Span.Contains(pos)) pos = extent.Span.End;
+                else pos = pos + 1;
+
+                while (pos.Position < snapshot.Length && char.IsWhiteSpace(snapshot[pos]))
+                {
+                    pos = pos + 1;
+                }
+            }
+
+            MoveCaret(pos);
+        }
+
+        private void MoveWordBackward(int count)
+        {
+            var caret = _view.Caret;
+            var snapshot = caret.Position.BufferPosition.Snapshot;
+            var pos = caret.Position.BufferPosition;
+
+            for (int i = 0; i < count; i++)
+            {
+                if (pos.Position > 0) pos = pos - 1;
+
+                while (pos.Position > 0 && char.IsWhiteSpace(snapshot[pos]))
+                {
+                    pos = pos - 1;
+                }
+
+                var extent = _navigator.GetExtentOfWord(pos);
+
+                if (extent.IsSignificant)
+                {
+                    pos = extent.Span.Start;
+                }
+            }
+
+            MoveCaret(pos);
         }
 
         private void MoveCaret(SnapshotPoint target)
@@ -173,7 +402,8 @@ namespace VsHx
                     sel.Select(sel.AnchorPoint, targetV);
                 }
             }
-            else {
+            else
+            {
                 sel.Clear();
             }
 
@@ -189,10 +419,7 @@ namespace VsHx
             var line = pos.GetContainingLine();
 
             int column = pos.Position - line.Start.Position;
-            int newColumn = column + delta;
-
-            if (newColumn < 0) newColumn = 0;
-            else if (newColumn > line.Length) newColumn = line.Length;
+            int newColumn = Clamp(column + delta, 0, line.Length);
 
             var newPos = line.Start + newColumn;
             MoveCaret(new SnapshotPoint(snapshot, newPos.Position));
@@ -202,10 +429,7 @@ namespace VsHx
         {
             var caret = _view.Caret;
             var line = caret.Position.BufferPosition.GetContainingLine();
-            var targetLine = line.LineNumber + delta;
-
-            if (targetLine < 0) targetLine = 0;
-            else if (targetLine >= _view.TextSnapshot.LineCount) targetLine = _view.TextSnapshot.LineCount - 1;
+            var targetLine = Clamp(line.LineNumber + delta, 0, _view.TextSnapshot.LineCount - 1);
 
             var column = caret.Position.BufferPosition.Position - line.Start.Position;
             var newLine = _view.TextSnapshot.GetLineFromLineNumber(targetLine);
@@ -213,5 +437,23 @@ namespace VsHx
 
             MoveCaret(pos);
         }
+
+        public override void TextInput(TextCompositionEventArgs e)
+        {
+            if (!HxState.Enabled)
+                return;
+
+            e.Handled = true;
+        }
+
+        public override void PreviewTextInput(TextCompositionEventArgs e)
+        {
+            if (!HxState.Enabled)
+                return;
+
+            e.Handled = true;
+        }
+
+        private int Clamp(int v, int min, int max) => Math.Min(Math.Max(min, v), max);
     }
 }

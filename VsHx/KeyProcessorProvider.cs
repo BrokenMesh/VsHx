@@ -1,6 +1,7 @@
 ﻿using Microsoft.VisualStudio.Editor;
 using Microsoft.VisualStudio.OLE.Interop;
 using Microsoft.VisualStudio.Text.Editor;
+using Microsoft.VisualStudio.Text.Operations;
 using Microsoft.VisualStudio.Utilities;
 using System.ComponentModel.Composition;
 
@@ -13,7 +14,11 @@ namespace VsHx
     internal sealed class HxKeyProcessorProvider : IKeyProcessorProvider
     {
         [Import]
-        internal IVsEditorAdaptersFactoryService Adapters;
+        internal IVsEditorAdaptersFactoryService Adapters; 
+
+        [Import]
+        internal ITextStructureNavigatorSelectorService NavigatorService;
+
 
         public KeyProcessor GetAssociatedProcessor(IWpfTextView view)
         {
@@ -25,7 +30,7 @@ namespace VsHx
             vsView.AddCommandFilter(filter, out next);
             filter.SetNext(next);
 
-            return new HxKeyProcessor(view);
+            return new HxKeyProcessor(view, NavigatorService.GetTextStructureNavigator(view.TextBuffer));
         }
 
     }
