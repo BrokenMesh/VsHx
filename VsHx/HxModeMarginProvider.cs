@@ -14,8 +14,7 @@ namespace VsHx
     {
         public IWpfTextViewMargin CreateMargin(
             IWpfTextViewHost host,
-            IWpfTextViewMargin container)
-        {
+            IWpfTextViewMargin container) {
             return new HxModeMargin(host.TextView);
         }
     }

@@ -1,5 +1,7 @@
 ﻿using Microsoft.VisualStudio;
 using Microsoft.VisualStudio.OLE.Interop;
+using Microsoft.VisualStudio.Text;
+using Microsoft.VisualStudio.Text.Editor;
 using System;
 namespace VsHx
 {
@@ -38,7 +40,67 @@ namespace VsHx
                 return VSConstants.S_OK;
             }
 
+            if (HxState.Enabled && pguidCmdGroup == VSConstants.VSStd2K) {
+
+                if (nCmdID == (uint)VSConstants.VSStd2KCmdID.CANCEL) {
+                    HxState.Reset();
+                    HxState.StateHasChanged();
+                    return VSConstants.S_OK;
+                }
+
+                if (nCmdID == (uint)VSConstants.VSStd2KCmdID.RETURN) {
+                    if (HxState.HxMode == HxState.Mode.Register) {
+                        if (HxState.RegContentStr != null) {
+                            if (HxState.Registers.ContainsKey(HxState.RegistersStr)) HxState.Registers.Remove(HxState.RegistersStr);
+                            HxState.Registers.Add(HxState.RegistersStr, HxState.RegContentStr);
+                        }
+                        else {
+                            if (HxState.Registers.ContainsKey(HxState.RegistersStr)) {
+                                Paste(HxState.Registers[HxState.RegistersStr]);
+                            }
+                        }
+
+                        HxState.Reset();
+                        HxState.StateHasChanged();
+                    }
+
+                    return VSConstants.S_OK; 
+                }
+
+                if (nCmdID == (uint)VSConstants.VSStd2KCmdID.TYPECHAR ||
+                    nCmdID == (uint)VSConstants.VSStd2KCmdID.BACKSPACE) { 
+                    return VSConstants.S_OK; 
+                }
+            }
+
             return _next.Exec(ref pguidCmdGroup, nCmdID, nCmdexecopt, pvaIn, pvaOut);
+        }
+
+        private void Paste(string text) {
+            var view = HxState.View;
+            if (view == null) return;
+
+            var selection = view.Selection;
+            var buffer = view.TextBuffer;
+
+            int insertPos = selection.IsEmpty
+                ? view.Caret.Position.BufferPosition.Position
+                : selection.Start.Position;
+
+            using (var edit = buffer.CreateEdit()) {
+                if (!selection.IsEmpty) {
+                    foreach (var span in selection.SelectedSpans)
+                        edit.Delete(span);
+                }
+
+                edit.Insert(insertPos, text);
+                edit.Apply();
+            }
+
+            selection.Clear();
+
+            var snapshot = buffer.CurrentSnapshot;
+            view.Caret.MoveTo(new SnapshotPoint(snapshot, insertPos + text.Length));
         }
     }
 

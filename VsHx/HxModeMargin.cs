@@ -18,10 +18,8 @@ namespace VsHx
         public double MarginSize => _root.ActualWidth;
         public bool Enabled => true;
 
-        public HxModeMargin(IWpfTextView view)
-        {
-            _text = new TextBlock
-            {
+        public HxModeMargin(IWpfTextView view) {
+            _text = new TextBlock {
                 FontSize = 11,
                 FontWeight = FontWeights.Bold,
                 Foreground = Brushes.Gray,
@@ -30,28 +28,31 @@ namespace VsHx
                 HorizontalAlignment = HorizontalAlignment.Right
             };
 
-            _root = new Border
-            {
+            _root = new Border {
                 Child = _text
             };
 
             HxState.OnStateChanged += OnModeChanged;
         }
 
-        private void OnModeChanged()
-        {
+        private void OnModeChanged() {
             List<string> output = new List<string>();
 
-            if (HxState.SelectionMode) output.Add("SEL");
-            if (HxState.NumInput != null) output.Add(HxState.NumInput);
-            if (HxState.ActionKey != null) output.Add(HxState.ActionKey);
+            if (HxState.HxMode == HxState.Mode.Normal) {
+                if (HxState.SelectionMode) output.Add("SEL");
+                if (HxState.NumInput != null) output.Add(HxState.NumInput);
+                if (HxState.ActionKey != null) output.Add(HxState.ActionKey);
+            }
+            else if (HxState.HxMode == HxState.Mode.Register) {
+                output.Add("REG");
+                if (HxState.RegistersStr != null) output.Add(HxState.RegistersStr);
+            }
 
             output.Add(HxState.Enabled ? "HX" : "VS");
             _text.Text = string.Join(" - ", output);
         }
 
-        public void Dispose()
-        {
+        public void Dispose() {
             HxState.OnStateChanged -= OnModeChanged;
         }
 

@@ -13,15 +13,14 @@ namespace VsHx
     [TextViewRole(PredefinedTextViewRoles.Editable)]
     internal sealed class HxKeyProcessorProvider : IKeyProcessorProvider
     {
-        [Import]
-        internal IVsEditorAdaptersFactoryService Adapters; 
+        [Import] internal IVsEditorAdaptersFactoryService Adapters;
 
-        [Import]
-        internal ITextStructureNavigatorSelectorService NavigatorService;
+        [Import] internal ITextStructureNavigatorSelectorService NavigatorService;
+
+        [Import] internal ITextUndoHistoryRegistry UndoRegistry;
 
 
-        public KeyProcessor GetAssociatedProcessor(IWpfTextView view)
-        {
+        public KeyProcessor GetAssociatedProcessor(IWpfTextView view) {
             var vsView = Adapters.GetViewAdapter(view);
 
             IOleCommandTarget next;
@@ -30,7 +29,9 @@ namespace VsHx
             vsView.AddCommandFilter(filter, out next);
             filter.SetNext(next);
 
-            return new HxKeyProcessor(view, NavigatorService.GetTextStructureNavigator(view.TextBuffer));
+            var navigator = NavigatorService.GetTextStructureNavigator(view.TextBuffer);
+            var undoHistory = UndoRegistry.GetHistory(view.TextBuffer);
+            return new HxKeyProcessor(view, navigator, undoHistory);
         }
 
     }
