@@ -3,40 +3,44 @@ using Microsoft.VisualStudio.OLE.Interop;
 using Microsoft.VisualStudio.Text;
 using Microsoft.VisualStudio.Text.Editor;
 using System;
+using System.Linq;
+using System.Runtime.InteropServices;
 namespace VsHx
 {
     internal sealed class HxCommandFilter : IOleCommandTarget
     {
         private IOleCommandTarget _next;
 
-        public HxCommandFilter(IOleCommandTarget next)
-        {
+        public HxCommandFilter(IOleCommandTarget next) {
             _next = next;
         }
 
-        public void SetNext(IOleCommandTarget next)
-        {
+        public void SetNext(IOleCommandTarget next) {
             _next = next;
         }
 
         public int QueryStatus(ref Guid pguidCmdGroup, uint cCmds, OLECMD[] prgCmds, IntPtr pCmdText)
             => _next.QueryStatus(ref pguidCmdGroup, cCmds, prgCmds, pCmdText);
 
-        public int Exec(ref Guid pguidCmdGroup, uint nCmdID, uint nCmdexecopt, IntPtr pvaIn, IntPtr pvaOut)
-        {
-            System.Diagnostics.Debug.WriteLine($"{pguidCmdGroup} {nCmdID}");
+        public int Exec(ref Guid pguidCmdGroup, uint nCmdID, uint nCmdexecopt, IntPtr pvaIn, IntPtr pvaOut) {
 
+            if (!(pguidCmdGroup == VSConstants.VSStd2K && nCmdID == (uint)VSConstants.VSStd2KCmdID.SolutionPlatform) &&
+                !(pguidCmdGroup == VSConstants.GUID_VSStandardCommandSet97 && nCmdID == (uint)VSConstants.VSStd97CmdID.SolutionCfg)) {
+                System.Diagnostics.Debug.WriteLine($"{pguidCmdGroup} {nCmdID}");
+            }
 
-            if (pguidCmdGroup == VSConstants.GUID_VSStandardCommandSet97 && nCmdID == (uint)VSConstants.VSStd97CmdID.Replace)
-            {
+            if (pguidCmdGroup == VSConstants.GUID_VSStandardCommandSet97 && nCmdID == (uint)VSConstants.VSStd97CmdID.Replace) {
                 HxState.Enabled = !HxState.Enabled;
                 HxState.Reset();
                 HxState.StateHasChanged();
                 return VSConstants.S_OK;
             }
 
-            if (HxState.Enabled && pguidCmdGroup == VSConstants.VSStd2K && nCmdID == (uint)VSConstants.VSStd2KCmdID.TYPECHAR)
-            {
+            if (pguidCmdGroup == VSConstants.VsStd11 && nCmdID == (uint)VSConstants.VSStd11CmdID.LocateFindTarget) {
+                return VSConstants.S_OK;
+            }
+
+            if (HxState.Enabled && pguidCmdGroup == VSConstants.VSStd2K && nCmdID == (uint)VSConstants.VSStd2KCmdID.TYPECHAR) {
                 return VSConstants.S_OK;
             }
 
@@ -62,14 +66,15 @@ namespace VsHx
 
                         HxState.Reset();
                         HxState.StateHasChanged();
+
+                        return VSConstants.S_OK;
                     }
 
-                    return VSConstants.S_OK; 
                 }
 
                 if (nCmdID == (uint)VSConstants.VSStd2KCmdID.TYPECHAR ||
-                    nCmdID == (uint)VSConstants.VSStd2KCmdID.BACKSPACE) { 
-                    return VSConstants.S_OK; 
+                    nCmdID == (uint)VSConstants.VSStd2KCmdID.BACKSPACE) {
+                    return VSConstants.S_OK;
                 }
             }
 
@@ -77,6 +82,10 @@ namespace VsHx
         }
 
         private void Paste(string text) {
+            if (string.IsNullOrEmpty(text)) return;
+
+            int num = HxState.RegContentNum ?? 1;
+
             var view = HxState.View;
             if (view == null) return;
 
@@ -87,21 +96,24 @@ namespace VsHx
                 ? view.Caret.Position.BufferPosition.Position
                 : selection.Start.Position;
 
+            string payload = string.Concat(Enumerable.Repeat(text, num));
+
             using (var edit = buffer.CreateEdit()) {
                 if (!selection.IsEmpty) {
                     foreach (var span in selection.SelectedSpans)
                         edit.Delete(span);
                 }
 
-                edit.Insert(insertPos, text);
+                edit.Insert(insertPos, payload);
                 edit.Apply();
             }
 
             selection.Clear();
 
             var snapshot = buffer.CurrentSnapshot;
-            view.Caret.MoveTo(new SnapshotPoint(snapshot, insertPos + text.Length));
+            view.Caret.MoveTo(new SnapshotPoint(snapshot, insertPos + payload.Length));
         }
+
     }
 
 

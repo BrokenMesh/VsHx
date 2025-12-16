@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
+using System.Windows.Documents;
 using System.Windows.Input;
 using VsHx;
 using static System.Net.Mime.MediaTypeNames;
@@ -39,7 +40,7 @@ namespace VsHx
 
         private readonly List<Key> ActionKeys = new List<Key>()
         {
-            Key.G,
+            Key.G, Key.M
         };
 
 
@@ -72,14 +73,15 @@ namespace VsHx
 
             if (!HxState.Enabled) return;
 
+            e.Handled = true;
+
             if (e.Key == Key.H) {
                 ToggleHxMode();
-                e.Handled = true;
                 return;
             }
 
             bool isShift = Keyboard.Modifiers == ModifierKeys.Shift;
-            bool isAlt = Keyboard.Modifiers == ModifierKeys.Alt;
+            bool isCtrl = Keyboard.Modifiers == ModifierKeys.Control;
 
             // Num Keys ------------------------------------------------------
             int numVal = (int)e.Key - 34;
@@ -90,18 +92,21 @@ namespace VsHx
 
             // Action Keys ----------------------------------------------------
             if (ActionKeys.Contains(e.Key)) {
+                if (e.Key == Key.M && !HxState.SelectionMode) return;
+
                 SetActionKey(e.Key);
                 return;
             }
 
             // Insert Keys ------------------------------------------------------
             if (InsertKeys.Contains(e.Key)) {
+                int num = GetNumInput();
+
                 switch (e.Key) {
                     case Key.R: Replace(); break;
-                    case Key.O: Open(!isShift); break;
+                    case Key.O: Open(num, !isShift); break;
                 }
 
-                e.Handled = true;
                 return;
             }
 
@@ -113,12 +118,11 @@ namespace VsHx
                     case Key.D: Delete(); break;
                     case Key.U: Undo(num, isShift); break;
                     case Key.C: Copy(isShift); break;
-                    case Key.P: Paste(isShift); break;
+                    case Key.P: Paste(num, isShift); break;
                 }
 
                 ResetNumInput();
                 SetActionKey(null);
-                e.Handled = true;
                 return;
             }
 
@@ -136,13 +140,13 @@ namespace VsHx
 
                 ResetNumInput();
                 SetActionKey(null);
-                e.Handled = true;
                 return;
             }
 
             // Simple Motion Keys ------------------------------------------------------
             if (SimpleMotionsKeys.Contains(e.Key)) {
-                SetSelectionMode(isShift);
+                bool move = HxState.ActionKey == "M";
+                SetSelectionMode(isShift || move);
 
                 int num = GetNumInput();
 
@@ -152,16 +156,15 @@ namespace VsHx
                 }
 
                 switch (e.Key) {
-                    case Key.K: MoveVertical(1 * num); break;
-                    case Key.I: MoveVertical(-1 * num); break;
-                    case Key.J: MoveHorizontal(-1 * num); break;
-                    case Key.L: MoveHorizontal(1 * num); break;
+                    case Key.K: MoveVertical(1 * num, move); break;
+                    case Key.I: MoveVertical(-1 * num, move); break;
+                    case Key.J: MoveHorizontal(-1 * num, HxState.ActionKey != "G"); break;
+                    case Key.L: MoveHorizontal(1 * num, HxState.ActionKey != "G"); break;
                     case Key.W: MoveWordForward(num); break;
                     case Key.B: MoveWordBackward(num); break;
                 }
 
                 ResetNumInput();
-                e.Handled = true;
                 return;
             }
         }
@@ -249,43 +252,48 @@ namespace VsHx
             }
         }
 
-        private void Paste(bool reg) {
+        private void Paste(int num, bool reg) {
             if (reg) {
                 HxState.HxMode = HxState.Mode.Register;
+                HxState.RegContentNum = num;
                 return;
             }
-            else {
-                var text = Clipboard.GetText();
-                if (text == null) return;
 
-                var view = HxState.View;
-                if (view == null) return;
+            if (num <= 0) num = 1;
 
-                var selection = view.Selection;
-                var buffer = view.TextBuffer;
+            var text = Clipboard.GetText();
+            if (string.IsNullOrEmpty(text)) return;
 
-                int insertPos = selection.IsEmpty
-                    ? view.Caret.Position.BufferPosition.Position
-                    : selection.Start.Position;
+            var view = HxState.View;
+            if (view == null) return;
 
-                using (var edit = buffer.CreateEdit()) {
-                    if (!selection.IsEmpty) {
-                        foreach (var span in selection.SelectedSpans)
-                            edit.Delete(span);
-                    }
+            var selection = view.Selection;
+            var buffer = view.TextBuffer;
 
-                    edit.Insert(insertPos, text);
-                    edit.Apply();
+            int insertPos = selection.IsEmpty
+                ? view.Caret.Position.BufferPosition.Position
+                : selection.Start.Position;
+
+            string payload = string.Concat(Enumerable.Repeat(text, num));
+
+            using (var edit = buffer.CreateEdit()) {
+                if (!selection.IsEmpty) {
+                    foreach (var span in selection.SelectedSpans)
+                        edit.Delete(span);
                 }
 
-                selection.Clear();
-
-                var snapshot = buffer.CurrentSnapshot;
-                view.Caret.MoveTo(new SnapshotPoint(snapshot, insertPos + text.Length));
+                edit.Insert(insertPos, payload);
+                edit.Apply();
             }
+
+            selection.Clear();
+
+            var snapshot = buffer.CurrentSnapshot;
+            view.Caret.MoveTo(new SnapshotPoint(snapshot, insertPos + payload.Length));
         }
 
-        private void Open(bool below) {
+
+        private void Open(int num, bool below) {
             var caret = _view.Caret;
             var buffer = _view.TextBuffer;
 
@@ -296,13 +304,20 @@ namespace VsHx
                 ? line.EndIncludingLineBreak.Position
                 : line.Start.Position;
 
+            string text = string.Concat(Enumerable.Repeat(Environment.NewLine, num));
+
             using (var edit = buffer.CreateEdit()) {
-                edit.Insert(insertPos, Environment.NewLine);
+                edit.Insert(insertPos, text);
                 edit.Apply();
             }
 
             var newSnapshot = buffer.CurrentSnapshot;
-            _view.Caret.MoveTo(new SnapshotPoint(newSnapshot, insertPos));
+
+            int caretPos = below
+                ? insertPos
+                : insertPos;
+
+            _view.Caret.MoveTo(new SnapshotPoint(newSnapshot, caretPos));
 
             ToggleHxMode();
         }
@@ -494,7 +509,7 @@ namespace VsHx
             caret.MoveTo(target);
         }
 
-        private void MoveHorizontal(int delta) {
+        private void MoveHorizontal(int delta, bool wrap) {
             var caret = _view.Caret;
             var snapshot = caret.Position.BufferPosition.Snapshot;
 
@@ -502,23 +517,113 @@ namespace VsHx
             var line = pos.GetContainingLine();
 
             int column = pos.Position - line.Start.Position;
-            int newColumn = Clamp(column + delta, 0, line.Length);
+            int targetColumn = column + delta;
 
-            var newPos = line.Start + newColumn;
-            MoveCaret(new SnapshotPoint(snapshot, newPos.Position));
+            if (wrap) {
+                if (targetColumn < 0) {
+                    if (line.LineNumber == 0) targetColumn = 0;
+                    else {
+                        var prevLine = snapshot.GetLineFromLineNumber(line.LineNumber - 1);
+                        MoveCaret(prevLine.End);
+                        return;
+                    }
+                }
+
+                if (targetColumn > line.Length) {
+                    if (line.LineNumber == snapshot.LineCount - 1) targetColumn = line.Length;
+                    else {
+                        var nextLine = snapshot.GetLineFromLineNumber(line.LineNumber + 1);
+                        MoveCaret(nextLine.Start);
+                        return;
+                    }
+                }
+            }
+
+            MoveCaret(line.Start + targetColumn);
         }
 
-        private void MoveVertical(int delta) {
+
+        private void MoveVertical(int delta, bool move) {
+            if (HxState.SelectionMode && move) {
+                MoveSelection(delta);
+                return;
+            }
+
             var caret = _view.Caret;
             var line = caret.Position.BufferPosition.GetContainingLine();
             var targetLine = Clamp(line.LineNumber + delta, 0, _view.TextSnapshot.LineCount - 1);
 
             var column = caret.Position.BufferPosition.Position - line.Start.Position;
             var newLine = _view.TextSnapshot.GetLineFromLineNumber(targetLine);
-            var pos = newLine.Start + System.Math.Min(column, newLine.Length);
+            var pos = newLine.Start + Math.Min(column, newLine.Length);
 
             MoveCaret(pos);
         }
+
+        private void MoveSelection(int delta) {
+            var view = _view;
+            var buffer = view.TextBuffer;
+            var sel = view.Selection;
+            var caret = view.Caret;
+
+            if (sel.IsEmpty) return;
+
+            var snapshot = buffer.CurrentSnapshot;
+            var span = sel.SelectedSpans[0];
+
+            var startLine = span.Start.GetContainingLine();
+
+            ITextSnapshotLine endLine;
+            if (span.Length == 0) {
+                endLine = startLine;
+            }
+            else {
+                var endMinus1 = new SnapshotPoint(snapshot, span.End.Position - 1);
+                endLine = endMinus1.GetContainingLine();
+            }
+
+            int blockStart = startLine.Start.Position;
+            int blockEnd = endLine.LineNumber == snapshot.LineCount - 1 ? snapshot.Length : endLine.EndIncludingLineBreak.Position;
+
+            int blockLen = blockEnd - blockStart;
+
+            int caretOffset = caret.Position.BufferPosition.Position - blockStart;
+            caretOffset = Clamp(caretOffset, 0, blockLen);
+
+            string text = snapshot.GetText(blockStart, blockLen);
+
+            int targetLineNum = Clamp(startLine.LineNumber + delta, 0, snapshot.LineCount);
+
+            ITextSnapshot newSnapshot;
+
+            using (var edit = buffer.CreateEdit()) {
+                edit.Delete(blockStart, blockLen);
+                newSnapshot = edit.Apply();
+            }
+
+            targetLineNum = Clamp(targetLineNum, 0, newSnapshot.LineCount - 1);
+
+            int insertPos = newSnapshot.GetLineFromLineNumber(targetLineNum).Start.Position;
+
+            using (var edit = buffer.CreateEdit()) {
+                edit.Insert(insertPos, text);
+                newSnapshot = edit.Apply();
+            }
+
+            sel.Clear();
+
+            var newStart = new VirtualSnapshotPoint(newSnapshot, insertPos);
+            var newEnd = new VirtualSnapshotPoint(newSnapshot,  Math.Min(insertPos + blockLen, newSnapshot.Length) );
+
+            sel.Select(newStart, newEnd);
+
+            int newCaretPos = Math.Min(insertPos + caretOffset, newSnapshot.Length);
+            caret.MoveTo(new SnapshotPoint(newSnapshot, newCaretPos));
+        }
+
+
+
+        private int Clamp(int v, int min, int max) => Math.Min(Math.Max(min, v), max);
 
         public override void TextInput(TextCompositionEventArgs e) {
             if (!HxState.Enabled)
@@ -534,6 +639,5 @@ namespace VsHx
             e.Handled = true;
         }
 
-        private int Clamp(int v, int min, int max) => Math.Min(Math.Max(min, v), max);
     }
 }

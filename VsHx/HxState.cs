@@ -11,7 +11,6 @@ namespace VsHx
 {
     internal static class HxState
     {
-
         public static bool Enabled;
 
         public static Mode HxMode = Mode.Normal;
@@ -22,6 +21,7 @@ namespace VsHx
 
         public static string RegistersStr = null;
         public static string RegContentStr = null;
+        public static int? RegContentNum = null;
 
         public static Dictionary<string, string> Registers = new Dictionary<string, string>();
 
@@ -40,6 +40,7 @@ namespace VsHx
 
             RegistersStr = null;
             RegContentStr = null;
+            RegContentNum = null;
         }
 
         public enum Mode
