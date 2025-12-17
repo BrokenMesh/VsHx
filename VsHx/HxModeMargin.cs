@@ -53,6 +53,10 @@ namespace VsHx
                     output.Add("FND" + (HxState.MTSSelect ? "nSEL" : ""));
                     if (HxState.StoredStr != null) output.Add(HxState.StoredStr);
                     break;
+                case HxState.Mode.Split:
+                    if (HxState.SelectionMode) output.Add("SPT");
+                    break;
+
                 default:
                     break;
             }

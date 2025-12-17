@@ -53,7 +53,7 @@ namespace VsHx
 
         public enum Mode
         {
-            Normal, Register, MoveToSymbol, GoOverSymbol
+            Normal, Register, MoveToSymbol, GoOverSymbol, Split
         }
     }
 

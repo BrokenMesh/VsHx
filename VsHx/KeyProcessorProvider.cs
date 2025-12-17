@@ -4,6 +4,7 @@ using Microsoft.VisualStudio.Text.Editor;
 using Microsoft.VisualStudio.Text.Operations;
 using Microsoft.VisualStudio.Utilities;
 using System.ComponentModel.Composition;
+using System.Windows.Forms;
 
 namespace VsHx
 {
@@ -19,7 +20,6 @@ namespace VsHx
 
         [Import] internal ITextUndoHistoryRegistry UndoRegistry;
 
-
         public KeyProcessor GetAssociatedProcessor(IWpfTextView view) {
             var vsView = Adapters.GetViewAdapter(view);
 
@@ -30,7 +30,7 @@ namespace VsHx
             filter.SetNext(next);
 
             var navigator = NavigatorService.GetTextStructureNavigator(view.TextBuffer);
-            var undoHistory = UndoRegistry.GetHistory(view.TextBuffer);
+            var undoHistory = UndoRegistry.GetHistory(view.TextBuffer); 
             return new HxKeyProcessor(view, navigator, undoHistory);
         }
 

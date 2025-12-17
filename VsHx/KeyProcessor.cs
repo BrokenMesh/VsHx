@@ -1,6 +1,10 @@
-﻿using Microsoft.VisualStudio.Text;
+﻿using Microsoft.VisualStudio;
+using Microsoft.VisualStudio.OLE.Interop;
+using Microsoft.VisualStudio.Shell;
+using Microsoft.VisualStudio.Text;
 using Microsoft.VisualStudio.Text.Editor;
 using Microsoft.VisualStudio.Text.Operations;
+using Microsoft.VisualStudio.Threading;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -33,6 +37,11 @@ namespace VsHx
         {
             Key.R, Key.O
         };
+        
+        private readonly List<Key> SpaceManipulationKeys = new List<Key>()
+        {
+            Key.U, Key.J, Key.S
+        };
 
         private readonly List<Key> ManipulationKeys = new List<Key>()
         {
@@ -41,7 +50,7 @@ namespace VsHx
 
         private readonly List<Key> ActionKeys = new List<Key>()
         {
-            Key.G, Key.M, Key.Space
+            Key.G, Key.M, Key.S, Key.Space
         };
 
 
@@ -77,6 +86,7 @@ namespace VsHx
             switch (HxState.HxMode) {
                 case HxState.Mode.MoveToSymbol:
                 case HxState.Mode.Register: TextEnter(e); break;
+                case HxState.Mode.Split: CharEnter(e);  break;
             }
 
             e.Handled = true;
@@ -112,6 +122,20 @@ namespace VsHx
                 return;
             }
 
+            // Space Manipulation Keys ------------------------------------------------------
+
+            if (HxState.ActionKey == "Space" && SpaceManipulationKeys.Contains(e.Key)) {
+                int num = GetNumInput();
+
+                switch (e.Key) {
+                    case Key.U: ChangeCase(isShift); break;
+                    case Key.J: JoinLines(); break;
+                    case Key.S: Split(); break;
+                }
+
+                return;
+            }
+
             // Action Keys ----------------------------------------------------
             if (ActionKeys.Contains(e.Key)) {
                 if (e.Key == Key.M && !HxState.SelectionMode) return;
@@ -119,6 +143,7 @@ namespace VsHx
                 SetActionKey(e.Key);
                 return;
             }
+
 
             // Insert Keys ------------------------------------------------------
             if (InsertKeys.Contains(e.Key)) {
@@ -201,7 +226,15 @@ namespace VsHx
             HxState.StateHasChanged();
         }
 
+        private void CharEnter(TextCompositionEventArgs e) {
+            e.Handled = true;
 
+            switch (HxState.HxMode) {
+                case HxState.Mode.Split: SplitSelection(e.Text); break;
+            }
+
+            HxState.Reset();
+        }
 
 
         private void ResetNumInput() {
@@ -405,6 +438,129 @@ namespace VsHx
             caret.MoveTo(new SnapshotPoint(buffer.CurrentSnapshot, posPoint.Position));
         }
 
+        private void Split() {
+            HxState.HxMode = HxState.Mode.Split;
+            HxState.StateHasChanged();
+        }
+
+        private void SplitSelection(string c) {
+            var view = _view;
+            var buffer = view.TextBuffer;
+            var sel = view.Selection;
+            var caret = view.Caret;
+
+            if (sel.IsEmpty) return;
+            if (string.IsNullOrEmpty(c)) return;
+
+            var snapshot = buffer.CurrentSnapshot;
+
+            var spans = sel.SelectedSpans
+                .Select(s => new SnapshotSpan(snapshot, s))
+                .OrderByDescending(s => s.Start.Position)
+                .ToArray();
+
+            using (var edit = buffer.CreateEdit()) {
+                foreach (var span in spans) {
+                    var text = span.GetText();
+                    var replaced = text.Replace( c, c + Environment.NewLine );
+                    edit.Replace(span, replaced);
+                }
+
+                edit.Apply();
+            }
+
+            sel.Clear();
+
+            var newSnapshot = buffer.CurrentSnapshot;
+            caret.MoveTo(new SnapshotPoint(newSnapshot, spans.Last().Start.Position));
+            caret.EnsureVisible();
+        }
+
+        private void JoinLines() {
+            var view = _view;
+            var buffer = view.TextBuffer;
+            var sel = view.Selection;
+            var caret = view.Caret;
+
+            if (sel.IsEmpty) return;
+
+            var snapshot = buffer.CurrentSnapshot;
+            var spans = sel.SelectedSpans;
+
+            int firstLine = spans.Min(s => s.Start.GetContainingLine().LineNumber);
+            int lastLine = spans.Max(s => {
+                if (s.End.Position == 0)
+                    return s.End.GetContainingLine().LineNumber;
+
+                var endPoint = new SnapshotPoint(snapshot, s.End.Position - 1);
+                return endPoint.GetContainingLine().LineNumber;
+            });
+
+            if (firstLine == lastLine) return;
+
+            var lines = new List<ITextSnapshotLine>();
+            for (int i = firstLine; i <= lastLine; i++)
+                lines.Add(snapshot.GetLineFromLineNumber(i));
+
+            var joined = string.Join(" ", lines.Select(l => l.GetText().Trim()));
+
+            int replaceStart = lines[0].Start.Position;
+            int replaceEnd = lines[lines.Count - 1].EndIncludingLineBreak.Position;
+            int replaceLen = replaceEnd - replaceStart;
+
+            using (var edit = buffer.CreateEdit()) {
+                edit.Replace(replaceStart, replaceLen, joined);
+                edit.Apply();
+            }
+
+            sel.Clear();
+
+            var newSnapshot = buffer.CurrentSnapshot;
+            caret.MoveTo(new SnapshotPoint(newSnapshot, replaceStart + joined.Length));
+            caret.EnsureVisible();
+        }
+
+        private void ChangeCase(bool upper) {
+            var view = _view;
+            var buffer = view.TextBuffer;
+            var sel = view.Selection;
+            var caret = view.Caret;
+
+            if (sel.IsEmpty) {
+                var pos = caret.Position.BufferPosition;
+                if (pos.Position >= buffer.CurrentSnapshot.Length) return;
+
+                var ch = buffer.CurrentSnapshot[pos];
+                var repl = upper ? char.ToUpperInvariant(ch) : char.ToLowerInvariant(ch);
+
+                if (ch == repl) return;
+
+                using (var edit = buffer.CreateEdit()) {
+                    edit.Replace(pos.Position, 1, repl.ToString());
+                    edit.Apply();
+                }
+
+                caret.MoveTo(new SnapshotPoint(buffer.CurrentSnapshot, pos.Position + 1));
+                return;
+            }
+
+            var snapshot = buffer.CurrentSnapshot;
+
+            var spans = sel.SelectedSpans
+                .Select(s => new SnapshotSpan(snapshot, s))
+                .OrderByDescending(s => s.Start.Position)
+                .ToArray();
+
+            using (var edit = buffer.CreateEdit()) {
+                foreach (var span in spans) {
+                    var text = span.GetText();
+                    var changed = upper ? text.ToUpperInvariant() : text.ToLowerInvariant();
+                    edit.Replace(span, changed);
+                }
+                edit.Apply();
+            }
+        }
+
         private void Undo(int num, bool redo) {
             if (_undoHistory == null) return;
             if (!_undoHistory.CanUndo) return;
@@ -467,7 +623,9 @@ namespace VsHx
             HxState.StoredStr = content;
             HxState.MTSIsTill = till;
             HxState.MTSIsBackward = backward;
-            HxState.MTSSelect = HxState.ActionKey == "Space";
+            HxState.MTSSelect = HxState.ActionKey == "S";
+
+            HxState.StateHasChanged();
         }
 
         private void MoveWordEnd(int count) {
