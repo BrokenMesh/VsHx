@@ -38,14 +38,23 @@ namespace VsHx
         private void OnModeChanged() {
             List<string> output = new List<string>();
 
-            if (HxState.HxMode == HxState.Mode.Normal) {
-                if (HxState.SelectionMode) output.Add("SEL");
-                if (HxState.NumInput != null) output.Add(HxState.NumInput);
-                if (HxState.ActionKey != null) output.Add(HxState.ActionKey);
-            }
-            else if (HxState.HxMode == HxState.Mode.Register) {
-                output.Add("REG");
-                if (HxState.RegistersStr != null) output.Add(HxState.RegistersStr);
+            switch (HxState.HxMode) {
+                case HxState.Mode.Normal:
+                    if (HxState.SelectionMode) output.Add("SEL");
+                    if (HxState.NumInput != null) output.Add(HxState.NumInput);
+                    if (HxState.ActionKey != null) output.Add(HxState.ActionKey);
+                    break;
+                case HxState.Mode.Register:
+                    output.Add("REG");
+                    if (HxState.StoredStr != null) output.Add(HxState.StoredStr);
+                    break;
+                case HxState.Mode.MoveToSymbol:
+                case HxState.Mode.GoOverSymbol:
+                    output.Add("FND" + (HxState.MTSSelect ? "nSEL" : ""));
+                    if (HxState.StoredStr != null) output.Add(HxState.StoredStr);
+                    break;
+                default:
+                    break;
             }
 
             output.Add(HxState.Enabled ? "HX" : "VS");

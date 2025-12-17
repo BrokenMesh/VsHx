@@ -9,6 +9,7 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using VsHx;
 using static System.Net.Mime.MediaTypeNames;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement.TextBox;
 
 namespace VsHx
 {
@@ -25,7 +26,7 @@ namespace VsHx
 
         private readonly List<Key> ComplexMotionsKeys = new List<Key>()
         {
-            Key.W, Key.B, Key.E, Key.X
+            Key.W, Key.B, Key.E, Key.X, Key.F, Key.T
         };
 
         private readonly List<Key> InsertKeys = new List<Key>()
@@ -40,7 +41,7 @@ namespace VsHx
 
         private readonly List<Key> ActionKeys = new List<Key>()
         {
-            Key.G, Key.M
+            Key.G, Key.M, Key.Space
         };
 
 
@@ -54,15 +55,36 @@ namespace VsHx
             HxState.View = view;
         }
 
+
+
+
         public override void KeyDown(KeyEventArgs e) {
+            if (e.Key == Key.Q) {
+                HxState.Reset();
+                HxState.StateHasChanged();
+                return;
+            }
+
             switch (HxState.HxMode) {
                 case HxState.Mode.Normal: Normal(e); break;
-                case HxState.Mode.Register: Register(e); break;
             }
         }
 
+        public override void PreviewTextInput(TextCompositionEventArgs e) {
+            if (!HxState.Enabled)
+                return;
+
+            switch (HxState.HxMode) {
+                case HxState.Mode.MoveToSymbol:
+                case HxState.Mode.Register: TextEnter(e); break;
+            }
+
+            e.Handled = true;
+        }
+
+
+
         private void Normal(KeyEventArgs e) {
-            if (e.IsRepeat) return;
 
             // Hx Mode Toggle ------------------------------------------------------
             if (e.Key == Key.H && Keyboard.Modifiers == ModifierKeys.Control) {
@@ -115,7 +137,7 @@ namespace VsHx
                 int num = GetNumInput();
 
                 switch (e.Key) {
-                    case Key.D: Delete(); break;
+                    case Key.D: Delete(num); break;
                     case Key.U: Undo(num, isShift); break;
                     case Key.C: Copy(isShift); break;
                     case Key.P: Paste(num, isShift); break;
@@ -136,6 +158,8 @@ namespace VsHx
                     case Key.B: MoveWordBackward(num); break;
                     case Key.E: MoveWordEnd(num); break;
                     case Key.X: SelectCurrentLine(num * (isShift ? -1 : 1)); break;
+                    case Key.F: MoveToSymbol(num, isShift, false); break;
+                    case Key.T: MoveToSymbol(num, isShift, true); break;
                 }
 
                 ResetNumInput();
@@ -150,7 +174,8 @@ namespace VsHx
 
                 int num = GetNumInput();
 
-                if (HxState.ActionKey == "G") {
+                bool snap = HxState.ActionKey == "G";
+                if (snap) {
                     SetActionKey(null);
                     num = 9_999_999;
                 }
@@ -158,8 +183,8 @@ namespace VsHx
                 switch (e.Key) {
                     case Key.K: MoveVertical(1 * num, move); break;
                     case Key.I: MoveVertical(-1 * num, move); break;
-                    case Key.J: MoveHorizontal(-1 * num, HxState.ActionKey != "G"); break;
-                    case Key.L: MoveHorizontal(1 * num, HxState.ActionKey != "G"); break;
+                    case Key.J: MoveHorizontal(-1 * num, !snap); break;
+                    case Key.L: MoveHorizontal(1 * num, !snap); break;
                     case Key.W: MoveWordForward(num); break;
                     case Key.B: MoveWordBackward(num); break;
                 }
@@ -169,42 +194,15 @@ namespace VsHx
             }
         }
 
-        private void Register(KeyEventArgs e) {
+        private void TextEnter(TextCompositionEventArgs e) {
             e.Handled = true;
 
-            if (e.Key == Key.Enter) {
-                if (HxState.RegContentStr != null) {
-                    if (HxState.Registers.ContainsKey(HxState.RegistersStr)) HxState.Registers.Remove(HxState.RegistersStr);
-                    HxState.Registers.Add(HxState.RegistersStr, HxState.RegContentStr);
-                }
-                else {
-                    if (HxState.Registers.ContainsKey(HxState.RegistersStr)) {
-                        ReplaceSelection(HxState.Registers[HxState.RegistersStr]);
-                    }
-                }
-
-                HxState.Reset();
-                HxState.StateHasChanged();
-
-                return;
-            }
-
-            HxState.RegistersStr = HxState.RegistersStr ?? "";
-
-            int numVal = (int)e.Key - 34;
-            if (numVal >= 0 && numVal <= 9) {
-                HxState.RegistersStr += numVal;
-                HxState.StateHasChanged();
-                return;
-            }
-
-            int strVal = (int)e.Key - 44;
-            if (numVal >= 0 && numVal <= 25) {
-                HxState.RegistersStr += e.Key.ToString();
-                HxState.StateHasChanged();
-                return;
-            }
+            HxState.StoredStr += e.Text;
+            HxState.StateHasChanged();
         }
+
+
+
 
         private void ResetNumInput() {
             HxState.NumInput = null;
@@ -255,7 +253,7 @@ namespace VsHx
         private void Paste(int num, bool reg) {
             if (reg) {
                 HxState.HxMode = HxState.Mode.Register;
-                HxState.RegContentNum = num;
+                HxState.StoredNum = num;
                 return;
             }
 
@@ -290,8 +288,8 @@ namespace VsHx
 
             var snapshot = buffer.CurrentSnapshot;
             view.Caret.MoveTo(new SnapshotPoint(snapshot, insertPos + payload.Length));
+            view.Caret.EnsureVisible();
         }
-
 
         private void Open(int num, bool below) {
             var caret = _view.Caret;
@@ -317,30 +315,65 @@ namespace VsHx
                 ? insertPos
                 : insertPos;
 
-            _view.Caret.MoveTo(new SnapshotPoint(newSnapshot, caretPos));
+            caret.MoveTo(new SnapshotPoint(newSnapshot, caretPos));
+
+            caret.EnsureVisible();
 
             ToggleHxMode();
         }
 
         private void Replace() {
-            var sel = _view.Selection;
-            var buffer = _view.TextBuffer;
+            var view = _view;
+            var buffer = view.TextBuffer;
+            var sel = view.Selection;
 
             if (sel.IsEmpty) return;
 
+            var snapshot = buffer.CurrentSnapshot;
+
+            var anchors = sel.SelectedSpans
+                .Select(s => {
+                    var line = s.Start.GetContainingLine();
+                    return new {
+                        LineNumber = line.LineNumber,
+                        Column = s.Start.Position - line.Start.Position
+                    };
+                })
+                .OrderByDescending(a => a.LineNumber)
+                .ThenByDescending(a => a.Column)
+                .ToArray();
+
+            var spans = sel.SelectedSpans
+                .Select(s => new SnapshotSpan(snapshot, s))
+                .OrderByDescending(s => s.Start.Position)
+                .ToArray();
+
             using (var edit = buffer.CreateEdit()) {
-                foreach (var span in sel.SelectedSpans) edit.Delete(span);
+                foreach (var span in spans)
+                    edit.Delete(span);
                 edit.Apply();
             }
 
-            var start = sel.Start.Position;
             sel.Clear();
-            _view.Caret.MoveTo(start);
+
+            var newSnapshot = buffer.CurrentSnapshot;
+            var broker = view.GetMultiSelectionBroker();
+
+            foreach (var a in anchors) {
+                if (a.LineNumber >= newSnapshot.LineCount) continue;
+
+                var line = newSnapshot.GetLineFromLineNumber(a.LineNumber);
+                var pos = line.Start.Position + Math.Min(a.Column, line.Length);
+
+                var point = new SnapshotPoint(newSnapshot, pos);
+                broker.AddSelection(new Selection(new SnapshotSpan(point, point), isReversed: false));
+            }
 
             ToggleHxMode();
         }
 
-        private void Delete() {
+
+        private void Delete(int num = 0) {
             var sel = _view.Selection;
             var buffer = _view.TextBuffer;
             var caret = _view.Caret;
@@ -360,10 +393,12 @@ namespace VsHx
             var snapshot = buffer.CurrentSnapshot;
             var posPoint = caret.Position.BufferPosition;
 
-            if (posPoint.Position >= snapshot.Length) return;
+            int contentAfter = snapshot.Length - posPoint.Position;
+
+            if (contentAfter <= 0) return;
 
             using (var edit = buffer.CreateEdit()) {
-                edit.Delete(new SnapshotSpan(posPoint, 1));
+                edit.Delete(new SnapshotSpan(posPoint, Math.Min(num, contentAfter)));
                 edit.Apply();
             }
 
@@ -422,6 +457,17 @@ namespace VsHx
             }
 
             MoveCaret(end);
+        }
+
+        private void MoveToSymbol(int num, bool backward, bool till) {
+            string content = TakeSelection();
+
+            HxState.HxMode = HxState.Mode.MoveToSymbol;
+            HxState.StoredNum = num;
+            HxState.StoredStr = content;
+            HxState.MTSIsTill = till;
+            HxState.MTSIsBackward = backward;
+            HxState.MTSSelect = HxState.ActionKey == "Space";
         }
 
         private void MoveWordEnd(int count) {
@@ -507,6 +553,8 @@ namespace VsHx
             }
 
             caret.MoveTo(target);
+
+            caret.EnsureVisible();
         }
 
         private void MoveHorizontal(int delta, bool wrap) {
@@ -539,6 +587,7 @@ namespace VsHx
                 }
             }
 
+            targetColumn = Clamp(targetColumn, 0, line.Length);
             MoveCaret(line.Start + targetColumn);
         }
 
@@ -613,7 +662,7 @@ namespace VsHx
             sel.Clear();
 
             var newStart = new VirtualSnapshotPoint(newSnapshot, insertPos);
-            var newEnd = new VirtualSnapshotPoint(newSnapshot,  Math.Min(insertPos + blockLen, newSnapshot.Length) );
+            var newEnd = new VirtualSnapshotPoint(newSnapshot, Math.Min(insertPos + blockLen, newSnapshot.Length));
 
             sel.Select(newStart, newEnd);
 
@@ -621,18 +670,9 @@ namespace VsHx
             caret.MoveTo(new SnapshotPoint(newSnapshot, newCaretPos));
         }
 
-
-
         private int Clamp(int v, int min, int max) => Math.Min(Math.Max(min, v), max);
 
         public override void TextInput(TextCompositionEventArgs e) {
-            if (!HxState.Enabled)
-                return;
-
-            e.Handled = true;
-        }
-
-        public override void PreviewTextInput(TextCompositionEventArgs e) {
             if (!HxState.Enabled)
                 return;
 

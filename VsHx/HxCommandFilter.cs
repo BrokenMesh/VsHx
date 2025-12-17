@@ -1,10 +1,13 @@
 ﻿using Microsoft.VisualStudio;
+using Microsoft.VisualStudio.Extensibility.Editor;
 using Microsoft.VisualStudio.OLE.Interop;
 using Microsoft.VisualStudio.Text;
 using Microsoft.VisualStudio.Text.Editor;
 using System;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Windows.Controls;
+using Selection = Microsoft.VisualStudio.Text.Selection;
 namespace VsHx
 {
     internal sealed class HxCommandFilter : IOleCommandTarget
@@ -55,12 +58,12 @@ namespace VsHx
                 if (nCmdID == (uint)VSConstants.VSStd2KCmdID.RETURN) {
                     if (HxState.HxMode == HxState.Mode.Register) {
                         if (HxState.RegContentStr != null) {
-                            if (HxState.Registers.ContainsKey(HxState.RegistersStr)) HxState.Registers.Remove(HxState.RegistersStr);
-                            HxState.Registers.Add(HxState.RegistersStr, HxState.RegContentStr);
+                            if (HxState.Registers.ContainsKey(HxState.StoredStr)) HxState.Registers.Remove(HxState.StoredStr);
+                            HxState.Registers.Add(HxState.StoredStr, HxState.RegContentStr);
                         }
                         else {
-                            if (HxState.Registers.ContainsKey(HxState.RegistersStr)) {
-                                Paste(HxState.Registers[HxState.RegistersStr]);
+                            if (HxState.Registers.ContainsKey(HxState.StoredStr)) {
+                                Paste(HxState.Registers[HxState.StoredStr]);
                             }
                         }
 
@@ -69,11 +72,35 @@ namespace VsHx
 
                         return VSConstants.S_OK;
                     }
+                    else if (HxState.HxMode == HxState.Mode.MoveToSymbol || HxState.HxMode == HxState.Mode.GoOverSymbol) {
+                        bool found = HxState.MTSIsBackward ? FindPrevious(HxState.StoredStr) : FindNext(HxState.StoredStr);
 
+                        if (found) {
+                            HxState.HxMode = HxState.Mode.GoOverSymbol;
+                        }
+                        else {
+                            HxState.Reset();
+                        }
+
+                        HxState.StateHasChanged();
+
+                        return VSConstants.S_OK;
+                    }
                 }
 
-                if (nCmdID == (uint)VSConstants.VSStd2KCmdID.TYPECHAR ||
-                    nCmdID == (uint)VSConstants.VSStd2KCmdID.BACKSPACE) {
+                if (nCmdID == (uint)VSConstants.VSStd2KCmdID.BACKSPACE) {
+                    if (HxState.HxMode == HxState.Mode.Register || HxState.HxMode == HxState.Mode.MoveToSymbol) {
+                        int len = HxState.StoredStr.Length;
+                        if (len != 0) {
+                            HxState.StoredStr = HxState.StoredStr.Remove(len-1, 1);
+                            HxState.StateHasChanged();
+                        }
+                    }
+
+                    return VSConstants.S_OK; 
+                }
+
+                if (nCmdID == (uint)VSConstants.VSStd2KCmdID.TYPECHAR) {
                     return VSConstants.S_OK;
                 }
             }
@@ -84,7 +111,7 @@ namespace VsHx
         private void Paste(string text) {
             if (string.IsNullOrEmpty(text)) return;
 
-            int num = HxState.RegContentNum ?? 1;
+            int num = HxState.StoredNum ?? 1;
 
             var view = HxState.View;
             if (view == null) return;
@@ -114,6 +141,80 @@ namespace VsHx
             view.Caret.MoveTo(new SnapshotPoint(snapshot, insertPos + payload.Length));
         }
 
+        private bool FindNext(string text) {
+            var view = HxState.View;
+            if (view == null) return false;
+        
+            var caret = view.Caret;
+            var snapshot = view.TextBuffer.CurrentSnapshot;
+            var selection = view.Selection;
+        
+            int startPos = caret.Position.BufferPosition.Position;
+        
+            if (!selection.IsEmpty) startPos = selection.SelectedSpans.Last().End.Position;
+        
+            if (startPos >= snapshot.Length) return false;
+        
+            int found = snapshot.GetText().IndexOf(text, startPos, StringComparison.Ordinal);
+            if (found < 0) return false;
+        
+            var start = new SnapshotPoint(snapshot, found);
+            var end = new SnapshotPoint(snapshot, found + text.Length);
+        
+            if (!HxState.MTSSelect) {
+                selection.Select(new SnapshotSpan(start, end), isReversed: false);
+                caret.MoveTo(HxState.MTSIsTill ? start : end);
+                caret.EnsureVisible();
+            }
+            else {
+                var selectionBroker = view.GetMultiSelectionBroker();
+
+                var newSelection = new Selection(new SnapshotSpan(start, end), isReversed: false);
+                selectionBroker.AddSelection(newSelection);
+
+                view.ViewScroller.EnsureSpanVisible(
+                    new SnapshotSpan(start, end),
+                    EnsureSpanVisibleOptions.ShowStart
+                );
+            }
+        
+            return true;
+        }
+
+        private bool FindPrevious(string text) {
+            var view = HxState.View;
+            if (view == null) return false;
+
+            var caret = view.Caret;
+            var snapshot = view.TextBuffer.CurrentSnapshot;
+            var selection = view.Selection;
+            string fullText = snapshot.GetText();
+
+            int startPos = caret.Position.BufferPosition.Position;
+
+            if (!selection.IsEmpty) startPos = selection.SelectedSpans[0].Start.Position;
+
+            if (startPos <= 0) return false;
+
+            int found = fullText.LastIndexOf(text, startPos - 1, StringComparison.Ordinal);
+            if (found < 0) return false;
+
+            var start = new SnapshotPoint(snapshot, found);
+            var end = new SnapshotPoint(snapshot, found + text.Length);
+
+            if (!HxState.MTSSelect) {
+                selection.Select(new SnapshotSpan(start, end), isReversed: true);
+                caret.MoveTo(HxState.MTSIsTill ? end : start);
+                caret.EnsureVisible();
+            }
+            else {
+                var selectionBroker = view.GetMultiSelectionBroker();
+                var newSelection = new Selection(new SnapshotSpan(start, end), isReversed: true);
+                selectionBroker.AddSelection(newSelection);
+            }
+
+            return true;
+        }
     }
 
 

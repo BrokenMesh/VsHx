@@ -14,14 +14,18 @@ namespace VsHx
         public static bool Enabled;
 
         public static Mode HxMode = Mode.Normal;
+        public static int? StoredNum = null;
+        public static string StoredStr = null;
 
         public static string NumInput = null;
         public static string ActionKey = null;
         public static bool SelectionMode = false;
 
-        public static string RegistersStr = null;
         public static string RegContentStr = null;
-        public static int? RegContentNum = null;
+
+        public static bool MTSIsTill = false;
+        public static bool MTSIsBackward = false;
+        public static bool MTSSelect = false;
 
         public static Dictionary<string, string> Registers = new Dictionary<string, string>();
 
@@ -33,19 +37,23 @@ namespace VsHx
 
         public static void Reset() {
             HxMode = Mode.Normal;
+            StoredNum = null;
+            StoredStr = null;
 
             NumInput = null;
             ActionKey = null;
             SelectionMode = false;
 
-            RegistersStr = null;
             RegContentStr = null;
-            RegContentNum = null;
+
+            MTSIsTill = false;
+            MTSIsBackward = false;
+            MTSSelect = false;
         }
 
         public enum Mode
         {
-            Normal, Register
+            Normal, Register, MoveToSymbol, GoOverSymbol
         }
     }
 
