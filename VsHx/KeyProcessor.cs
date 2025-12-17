@@ -8,6 +8,7 @@ using Microsoft.VisualStudio.Threading;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Documents;
 using System.Windows.Input;
@@ -37,10 +38,15 @@ namespace VsHx
         {
             Key.R, Key.O
         };
-        
+
         private readonly List<Key> SpaceManipulationKeys = new List<Key>()
         {
             Key.U, Key.J, Key.S
+        };
+
+        private readonly List<Key> SManipulationKeys = new List<Key>()
+        {
+            Key.O, Key.I,
         };
 
         private readonly List<Key> ManipulationKeys = new List<Key>()
@@ -86,7 +92,8 @@ namespace VsHx
             switch (HxState.HxMode) {
                 case HxState.Mode.MoveToSymbol:
                 case HxState.Mode.Register: TextEnter(e); break;
-                case HxState.Mode.Split: CharEnter(e);  break;
+                case HxState.Mode.Split:
+                case HxState.Mode.Surround: CharEnter(e); break;
             }
 
             e.Handled = true;
@@ -131,6 +138,19 @@ namespace VsHx
                     case Key.U: ChangeCase(isShift); break;
                     case Key.J: JoinLines(); break;
                     case Key.S: Split(); break;
+                }
+
+                return;
+            }
+
+            // S Manipulation Keys ------------------------------------------------------
+
+            if (HxState.ActionKey == "S" && SManipulationKeys.Contains(e.Key)) {
+                int num = GetNumInput();
+
+                switch (e.Key) {
+                    case Key.O: Surround(true, isShift); break;
+                    case Key.I: Surround(false, isShift); break;
                 }
 
                 return;
@@ -231,6 +251,7 @@ namespace VsHx
 
             switch (HxState.HxMode) {
                 case HxState.Mode.Split: SplitSelection(e.Text); break;
+                case HxState.Mode.Surround: SurroundChar(e.Text); break;
             }
 
             HxState.Reset();
@@ -438,6 +459,103 @@ namespace VsHx
             caret.MoveTo(new SnapshotPoint(buffer.CurrentSnapshot, posPoint.Position));
         }
 
+        private void Surround(bool outside, bool backwards) {
+            HxState.HxMode = HxState.Mode.Surround;
+            HxState.SOIsOutside = outside;
+            HxState.SOIsBackward = backwards;
+            HxState.StateHasChanged();
+        }
+
+        Dictionary<char, char> SurroundOpPairs = new Dictionary<char, char> {
+            { '(', ')' },
+            { '[', ']' },
+            { '{', '}' },
+            { '<', '>' },
+        };
+
+        Dictionary<char, char> SurroundClPairs = new Dictionary<char, char> {
+            { ')', '(' },
+            { ']', '[' },
+            { '}', '{' },
+            { '>', '<' },
+        };
+
+        private void SurroundChar(string text) {
+            var view = _view;
+            var caret = view.Caret;
+            var sel = view.Selection;
+
+            char op = text[0];
+            if (!SurroundOpPairs.ContainsKey(op)) return;
+
+            char cl = SurroundOpPairs[op];
+
+            var snapshot = view.TextBuffer.CurrentSnapshot;
+            if (snapshot.Length == 0) return;
+
+            int caretPos = Clamp(caret.Position.BufferPosition.Position, 0, snapshot.Length);
+            
+            int foundFirstIndex = FindNext(snapshot, caretPos, op, cl, HxState.SOIsBackward);
+            if (foundFirstIndex == -1) return;
+            char foundFirst = snapshot[foundFirstIndex];
+            
+            bool IsBackward;
+            char targetSecond;
+            
+            if (SurroundOpPairs.ContainsKey(foundFirst)) {
+                IsBackward = false;
+                targetSecond = SurroundOpPairs[foundFirst];
+            }
+            else {
+                IsBackward = true;
+                targetSecond = SurroundClPairs[foundFirst];
+            }
+            
+            int foundSecondIndex = FindNext(snapshot, foundFirstIndex, targetSecond, IsBackward);
+            if (foundSecondIndex == -1) return;
+            
+            int start = !IsBackward ? foundFirstIndex : foundSecondIndex;
+            int end = !IsBackward ? foundSecondIndex : foundFirstIndex;
+
+            int len = foundSecondIndex - foundFirstIndex;
+            var span = new SnapshotSpan(snapshot, start, end - start);
+
+            sel.Clear();
+            sel.Select(span, isReversed: false);
+            caret.MoveTo(new SnapshotPoint(snapshot, end));
+            caret.EnsureVisible();
+        }
+
+        int FindNext(ITextSnapshot s, int start, char op, char cl, bool backward) {
+            if (backward) {
+                for (int i = start; i >= 0; i--) {
+                    if (s[i] == op || s[i] == cl) return i;
+                }
+            }
+            else {
+                for (int i = start; i < s.Length; i++) {
+                    if (s[i] == op || s[i] == cl) return i;
+                }
+            }
+
+            return -1;
+        }
+
+        int FindNext(ITextSnapshot s, int start, char c, bool backward) {
+            if (backward) {
+                for (int i = start; i >= 0; i--) {
+                    if (s[i] == c) return i;
+                }
+            }
+            else {
+                for (int i = start; i < s.Length; i++) {
+                    if (s[i] == c) return i;
+                }
+            }
+
+            return -1;
+        }
+
         private void Split() {
             HxState.HxMode = HxState.Mode.Split;
             HxState.StateHasChanged();
@@ -462,7 +580,7 @@ namespace VsHx
             using (var edit = buffer.CreateEdit()) {
                 foreach (var span in spans) {
                     var text = span.GetText();
-                    var replaced = text.Replace( c, c + Environment.NewLine );
+                    var replaced = text.Replace(c, c + Environment.NewLine);
                     edit.Replace(span, replaced);
                 }
 

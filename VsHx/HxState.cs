@@ -27,6 +27,9 @@ namespace VsHx
         public static bool MTSIsBackward = false;
         public static bool MTSSelect = false;
 
+        public static bool SOIsOutside = false;
+        public static bool SOIsBackward = false;
+
         public static Dictionary<string, string> Registers = new Dictionary<string, string>();
 
         public static IWpfTextView View;
@@ -49,11 +52,14 @@ namespace VsHx
             MTSIsTill = false;
             MTSIsBackward = false;
             MTSSelect = false;
+
+            SOIsOutside = false;
+            SOIsBackward = false;
         }
 
         public enum Mode
         {
-            Normal, Register, MoveToSymbol, GoOverSymbol, Split
+            Normal, Register, MoveToSymbol, GoOverSymbol, Split, Surround
         }
     }
 

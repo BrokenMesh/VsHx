@@ -56,7 +56,9 @@ namespace VsHx
                 case HxState.Mode.Split:
                     if (HxState.SelectionMode) output.Add("SPT");
                     break;
-
+                case HxState.Mode.Surround:
+                    output.Add("SUR");
+                    break;
                 default:
                     break;
             }
