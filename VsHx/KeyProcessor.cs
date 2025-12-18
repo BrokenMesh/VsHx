@@ -56,7 +56,7 @@ namespace VsHx
 
         private readonly List<Key> ActionKeys = new List<Key>()
         {
-            Key.G, Key.M, Key.S, Key.Space
+            Key.G, Key.V, Key.B, Key.M, Key.S, Key.Space
         };
 
 
@@ -224,6 +224,12 @@ namespace VsHx
                 if (snap) {
                     SetActionKey(null);
                     num = 9_999_999;
+                }
+
+                if (HxState.ActionKey == "V") {
+                    int page = _view.TextViewLines.Count;
+                    SetActionKey(null);
+                    num = page;
                 }
 
                 switch (e.Key) {
@@ -486,7 +492,7 @@ namespace VsHx
             { '}', '{' },
             { '>', '<' },
         };
-        
+
         private void OnSurround(string text) {
             var view = _view;
             var sel = view.Selection;
@@ -551,14 +557,14 @@ namespace VsHx
             if (snapshot.Length == 0) return;
 
             int caretPos = Clamp(caret.Position.BufferPosition.Position, 0, snapshot.Length);
-            
+
             int foundFirstIndex = FindNext(snapshot, caretPos, op, cl, HxState.SOIsBackward);
             if (foundFirstIndex == -1) return;
             char foundFirst = snapshot[foundFirstIndex];
-            
+
             bool IsBackward;
             char targetSecond;
-            
+
             if (SurroundOpPairs.ContainsKey(foundFirst)) {
                 IsBackward = false;
                 targetSecond = SurroundOpPairs[foundFirst];
@@ -567,10 +573,10 @@ namespace VsHx
                 IsBackward = true;
                 targetSecond = SurroundClPairs[foundFirst];
             }
-            
+
             int foundSecondIndex = FindNext(snapshot, foundFirstIndex, targetSecond, IsBackward);
             if (foundSecondIndex == -1) return;
-            
+
             int start = (!IsBackward ? foundFirstIndex : foundSecondIndex) + 1;
             int end = !IsBackward ? foundSecondIndex : foundFirstIndex;
 
@@ -871,27 +877,64 @@ namespace VsHx
             MoveCaret(pos);
         }
 
+        //private void MoveCaret(SnapshotPoint target) {
+        //    var caret = _view.Caret;
+        //    var sel = _view.Selection;
+        //
+        //    if (HxState.SelectionMode) {
+        //        if (HxState.ActionKey != "S") {
+        //            var targetV = new VirtualSnapshotPoint(target);
+        //            var caretV = caret.Position.VirtualBufferPosition;
+        //
+        //            if (sel.IsEmpty) {
+        //                sel.Select(caretV, targetV);
+        //            }
+        //            else {
+        //                sel.Select(sel.AnchorPoint, targetV);
+        //            }
+        //        }
+        //        else {
+        //            // Implement this this
+        //        }
+        //    }
+        //    else {
+        //        sel.Clear();
+        //    }
+        //
+        //    caret.MoveTo(target);
+        //
+        //    caret.EnsureVisible();
+        //}
+
         private void MoveCaret(SnapshotPoint target) {
             var caret = _view.Caret;
             var sel = _view.Selection;
 
             if (HxState.SelectionMode) {
                 var targetV = new VirtualSnapshotPoint(target);
-                var caretV = caret.Position.VirtualBufferPosition;
 
-                if (sel.IsEmpty) {
-                    sel.Select(caretV, targetV);
+                if (HxState.ActionKey != "B") {
+                    if (sel.Mode != TextSelectionMode.Stream) sel.Mode = TextSelectionMode.Stream;
+
+                    var caretV = caret.Position.VirtualBufferPosition;
+
+                    if (sel.IsEmpty) sel.Select(caretV, targetV);
+                    else sel.Select(sel.AnchorPoint, targetV);
                 }
                 else {
-                    sel.Select(sel.AnchorPoint, targetV);
+                    if (sel.Mode != TextSelectionMode.Box) sel.Mode = TextSelectionMode.Box;
+
+                    VirtualSnapshotPoint anchor = sel.IsEmpty ? caret.Position.VirtualBufferPosition : sel.AnchorPoint;
+
+                    sel.Select(anchor, targetV);
                 }
             }
             else {
                 sel.Clear();
+                if (sel.Mode != TextSelectionMode.Stream) sel.Mode = TextSelectionMode.Stream;
             }
 
             caret.MoveTo(target);
-
             caret.EnsureVisible();
         }
 

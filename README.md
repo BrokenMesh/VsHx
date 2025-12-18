@@ -36,20 +36,23 @@ Select Line:  x
 ### Modifiers
 ```
 
-Select:       shift+{i j k l w b e}
-Snap:         G {i j k l}
-Snap-Select:  G shift+{i j k l}
-Repeat:       <num> {i j k l w b e x}
-Move Selected:M {i j k l}
+Select:        shift+{i j k l w b e}
+Snap:          G {i j k l}
+Snap-Select:   G shift+{i j k l}
+View:          V {i j k l}
+View-Select:   V shift+{i j k l}
+Box-Select:    B shift+{i j k l}
+Repeat:        <num> {i j k l w b e x}
+Move Selected: M {i j k l}
 
 ```
 
 ### Insert Actions
 ```
 
-Replace:      r
-Open Line:    o
-Open Line Top:shift+o
+Replace:       r
+Open Line:     o
+Open Line Top: shift+o
 
 ```
 
@@ -80,7 +83,7 @@ Find and Select:    s f <src> enter
 
 Select Inner:  s i {( [ { <}
 Select Outer:  s o {( [ { <}
-Wrap With:    s w {( [ { <}
+Wrap With:     s w {( [ { <}
 
 ```
 
