@@ -50,7 +50,7 @@ namespace VsHx
                     break;
                 case HxState.Mode.MoveToSymbol:
                 case HxState.Mode.GoOverSymbol:
-                    output.Add("FND" + (HxState.MTSSelect ? "nSEL" : ""));
+                    output.Add("FND" + (HxState.MTSSelect ? "&SEL" : ""));
                     if (HxState.StoredStr != null) output.Add(HxState.StoredStr);
                     break;
                 case HxState.Mode.Split:
@@ -58,6 +58,9 @@ namespace VsHx
                     break;
                 case HxState.Mode.Surround:
                     output.Add("SUR");
+                    if (HxState.SOIsWrap) output.Add("W");
+                    else if (HxState.SOIsOutside) output.Add("O");
+                    else output.Add("I");
                     break;
                 default:
                     break;

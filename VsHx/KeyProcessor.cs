@@ -461,6 +461,11 @@ namespace VsHx
         }
 
         private void Surround(bool outside, bool isWrap, bool backwards) {
+            var view = _view;
+            var sel = view.Selection;
+
+            if (sel.IsEmpty) return;
+
             HxState.HxMode = HxState.Mode.Surround;
             HxState.SOIsOutside = outside;
             HxState.SOIsBackward = backwards;
