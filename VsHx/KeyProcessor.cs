@@ -46,7 +46,7 @@ namespace VsHx
 
         private readonly List<Key> SManipulationKeys = new List<Key>()
         {
-            Key.O, Key.I,
+            Key.O, Key.I, Key.W
         };
 
         private readonly List<Key> ManipulationKeys = new List<Key>()
@@ -149,8 +149,9 @@ namespace VsHx
                 int num = GetNumInput();
 
                 switch (e.Key) {
-                    case Key.O: Surround(true, isShift); break;
-                    case Key.I: Surround(false, isShift); break;
+                    case Key.O: Surround(true, false, isShift); break;
+                    case Key.I: Surround(false, false, isShift); break;
+                    case Key.W: Surround(false, true, false); break;
                 }
 
                 return;
@@ -251,7 +252,7 @@ namespace VsHx
 
             switch (HxState.HxMode) {
                 case HxState.Mode.Split: SplitSelection(e.Text); break;
-                case HxState.Mode.Surround: SurroundChar(e.Text); break;
+                case HxState.Mode.Surround: OnSurround(e.Text); break;
             }
 
             HxState.Reset();
@@ -459,10 +460,11 @@ namespace VsHx
             caret.MoveTo(new SnapshotPoint(buffer.CurrentSnapshot, posPoint.Position));
         }
 
-        private void Surround(bool outside, bool backwards) {
+        private void Surround(bool outside, bool isWrap, bool backwards) {
             HxState.HxMode = HxState.Mode.Surround;
             HxState.SOIsOutside = outside;
             HxState.SOIsBackward = backwards;
+            HxState.SOIsWrap = isWrap;
             HxState.StateHasChanged();
         }
 
@@ -479,14 +481,64 @@ namespace VsHx
             { '}', '{' },
             { '>', '<' },
         };
-
-        private void SurroundChar(string text) {
+        
+        private void OnSurround(string text) {
             var view = _view;
-            var caret = view.Caret;
             var sel = view.Selection;
 
             char op = text[0];
             if (!SurroundOpPairs.ContainsKey(op)) return;
+
+            if (!HxState.SOIsWrap) {
+                SelectSurroundChar(op);
+            }
+            else {
+                SurroundSelection(op);
+            }
+        }
+
+        private void SurroundSelection(char op) {
+            var view = _view;
+            var sel = view.Selection;
+            var buffer = view.TextBuffer;
+
+            if (sel.IsEmpty) return;
+
+            char cl = SurroundOpPairs[op];
+
+            var snapshot = buffer.CurrentSnapshot;
+
+            var spans = sel.SelectedSpans
+                .Select(s => new SnapshotSpan(snapshot, s))
+                .OrderByDescending(s => s.Start.Position)
+                .ToArray();
+
+            using (var edit = buffer.CreateEdit()) {
+                foreach (var span in spans) {
+                    edit.Insert(span.End.Position, cl.ToString());
+                    edit.Insert(span.Start.Position, op.ToString());
+                }
+                edit.Apply();
+            }
+
+            sel.Clear();
+
+            var newSnapshot = buffer.CurrentSnapshot;
+            var broker = view.GetMultiSelectionBroker();
+
+            foreach (var span in spans.Reverse()) {
+                int start = span.Start.Position + 1;
+                int len = span.Length;
+                var newSpan = new SnapshotSpan(newSnapshot, start, len);
+                broker.AddSelection(new Selection(newSpan, isReversed: false));
+            }
+        }
+
+
+        private void SelectSurroundChar(char op) {
+            var view = _view;
+            var sel = view.Selection;
+            var caret = view.Caret;
 
             char cl = SurroundOpPairs[op];
 
@@ -514,8 +566,13 @@ namespace VsHx
             int foundSecondIndex = FindNext(snapshot, foundFirstIndex, targetSecond, IsBackward);
             if (foundSecondIndex == -1) return;
             
-            int start = !IsBackward ? foundFirstIndex : foundSecondIndex;
+            int start = (!IsBackward ? foundFirstIndex : foundSecondIndex) + 1;
             int end = !IsBackward ? foundSecondIndex : foundFirstIndex;
+
+            if (HxState.SOIsOutside) {
+                start -= 1;
+                end += 1;
+            }
 
             int len = foundSecondIndex - foundFirstIndex;
             var span = new SnapshotSpan(snapshot, start, end - start);

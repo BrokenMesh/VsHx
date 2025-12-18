@@ -29,6 +29,7 @@ namespace VsHx
 
         public static bool SOIsOutside = false;
         public static bool SOIsBackward = false;
+        public static bool SOIsWrap = false;
 
         public static Dictionary<string, string> Registers = new Dictionary<string, string>();
 
@@ -55,6 +56,7 @@ namespace VsHx
 
             SOIsOutside = false;
             SOIsBackward = false;
+            SOIsWrap = false;
         }
 
         public enum Mode
