@@ -877,35 +877,6 @@ namespace VsHx
             MoveCaret(pos);
         }
 
-        //private void MoveCaret(SnapshotPoint target) {
-        //    var caret = _view.Caret;
-        //    var sel = _view.Selection;
-        //
-        //    if (HxState.SelectionMode) {
-        //        if (HxState.ActionKey != "S") {
-        //            var targetV = new VirtualSnapshotPoint(target);
-        //            var caretV = caret.Position.VirtualBufferPosition;
-        //
-        //            if (sel.IsEmpty) {
-        //                sel.Select(caretV, targetV);
-        //            }
-        //            else {
-        //                sel.Select(sel.AnchorPoint, targetV);
-        //            }
-        //        }
-        //        else {
-        //            // Implement this this
-        //        }
-        //    }
-        //    else {
-        //        sel.Clear();
-        //    }
-        //
-        //    caret.MoveTo(target);
-        //
-        //    caret.EnsureVisible();
-        //}
-
         private void MoveCaret(SnapshotPoint target) {
             var caret = _view.Caret;
             var sel = _view.Selection;
