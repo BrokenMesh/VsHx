@@ -49,8 +49,11 @@ namespace VsHx
                     if (HxState.StoredStr != null) output.Add(HxState.StoredStr);
                     break;
                 case HxState.Mode.MoveToSymbol:
+                    output.Add("MTS" + (HxState.MTSSelect ? "&SEL" : ""));
+                    break;
+                case HxState.Mode.FindSymbol:
                 case HxState.Mode.GoOverSymbol:
-                    output.Add("FND" + (HxState.MTSSelect ? "&SEL" : ""));
+                    output.Add("FND" + (HxState.FSSelect ? "&SEL" : ""));
                     if (HxState.StoredStr != null) output.Add(HxState.StoredStr);
                     break;
                 case HxState.Mode.Split:

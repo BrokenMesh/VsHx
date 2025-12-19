@@ -72,8 +72,8 @@ namespace VsHx
 
                         return VSConstants.S_OK;
                     }
-                    else if (HxState.HxMode == HxState.Mode.MoveToSymbol || HxState.HxMode == HxState.Mode.GoOverSymbol) {
-                        bool found = HxState.MTSIsBackward ? FindPrevious(HxState.StoredStr) : FindNext(HxState.StoredStr);
+                    else if (HxState.HxMode == HxState.Mode.FindSymbol || HxState.HxMode == HxState.Mode.GoOverSymbol) {
+                        bool found = HxState.FSIsBackward ? FindPrevious(HxState.StoredStr) : FindNext(HxState.StoredStr);
 
                         if (found) {
                             HxState.HxMode = HxState.Mode.GoOverSymbol;
@@ -89,7 +89,7 @@ namespace VsHx
                 }
 
                 if (nCmdID == (uint)VSConstants.VSStd2KCmdID.BACKSPACE) {
-                    if (HxState.HxMode == HxState.Mode.Register || HxState.HxMode == HxState.Mode.MoveToSymbol) {
+                    if (HxState.HxMode == HxState.Mode.Register || HxState.HxMode == HxState.Mode.FindSymbol) {
                         int len = HxState.StoredStr.Length;
                         if (len != 0) {
                             HxState.StoredStr = HxState.StoredStr.Remove(len-1, 1);
@@ -161,9 +161,9 @@ namespace VsHx
             var start = new SnapshotPoint(snapshot, found);
             var end = new SnapshotPoint(snapshot, found + text.Length);
         
-            if (!HxState.MTSSelect) {
+            if (!HxState.FSSelect) {
                 selection.Select(new SnapshotSpan(start, end), isReversed: false);
-                caret.MoveTo(HxState.MTSIsTill ? start : end);
+                caret.MoveTo(HxState.FSIsTill ? start : end);
                 caret.EnsureVisible();
             }
             else {
@@ -202,9 +202,9 @@ namespace VsHx
             var start = new SnapshotPoint(snapshot, found);
             var end = new SnapshotPoint(snapshot, found + text.Length);
 
-            if (!HxState.MTSSelect) {
+            if (!HxState.FSSelect) {
                 selection.Select(new SnapshotSpan(start, end), isReversed: true);
-                caret.MoveTo(HxState.MTSIsTill ? end : start);
+                caret.MoveTo(HxState.FSIsTill ? end : start);
                 caret.EnsureVisible();
             }
             else {

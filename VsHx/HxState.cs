@@ -23,6 +23,10 @@ namespace VsHx
 
         public static string RegContentStr = null;
 
+        public static bool FSIsTill = false;
+        public static bool FSIsBackward = false;
+        public static bool FSSelect = false;
+
         public static bool MTSIsTill = false;
         public static bool MTSIsBackward = false;
         public static bool MTSSelect = false;
@@ -50,6 +54,10 @@ namespace VsHx
 
             RegContentStr = null;
 
+            FSIsTill = false;
+            FSIsBackward = false;
+            FSSelect = false;
+
             MTSIsTill = false;
             MTSIsBackward = false;
             MTSSelect = false;
@@ -61,7 +69,7 @@ namespace VsHx
 
         public enum Mode
         {
-            Normal, Register, MoveToSymbol, GoOverSymbol, Split, Surround
+            Normal, Register, FindSymbol, MoveToSymbol, GoOverSymbol, Split, Surround
         }
     }
 

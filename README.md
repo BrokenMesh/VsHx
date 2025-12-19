@@ -41,7 +41,7 @@ Snap:          G {i j k l}
 Snap-Select:   G shift+{i j k l}
 View:          V {i j k l}
 View-Select:   V shift+{i j k l}
-Box-Select:    B shift+{i j k l}
+Area-Select:   A shift+{i j k l}
 Repeat:        <num> {i j k l w b e x}
 Move Selected: M {i j k l}
 
@@ -72,9 +72,9 @@ Reg Paste:    shift+p <reg> enter
 ### Search Actions
 ```
 
-Find:               f <src> enter
-Find Until:         t <src> enter  // moves to symbol right before match
-Find and Select:    s f <src> enter
+Jump To:	f <char> enter
+Jump Untill:	t <char> enter  // moves to symbol right before match
+Select To:	s {f t} <char> enter
 
 ```
 
@@ -94,5 +94,7 @@ To Lowercase: space u
 To Uppercase: space shift+u
 Join Lines:   space j
 Split:        space s <char>
+Find:	      space f <find>
+Find&Select:  space n <find>
 
 ```

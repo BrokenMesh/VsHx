@@ -41,7 +41,7 @@ namespace VsHx
 
         private readonly List<Key> SpaceManipulationKeys = new List<Key>()
         {
-            Key.U, Key.J, Key.S
+            Key.U, Key.J, Key.S, Key.F, Key.N
         };
 
         private readonly List<Key> SManipulationKeys = new List<Key>()
@@ -56,7 +56,7 @@ namespace VsHx
 
         private readonly List<Key> ActionKeys = new List<Key>()
         {
-            Key.G, Key.V, Key.B, Key.M, Key.S, Key.Space
+            Key.G, Key.V, Key.A, Key.M, Key.S, Key.Space
         };
 
 
@@ -90,8 +90,9 @@ namespace VsHx
                 return;
 
             switch (HxState.HxMode) {
-                case HxState.Mode.MoveToSymbol:
+                case HxState.Mode.FindSymbol:
                 case HxState.Mode.Register: TextEnter(e); break;
+                case HxState.Mode.MoveToSymbol:
                 case HxState.Mode.Split:
                 case HxState.Mode.Surround: CharEnter(e); break;
             }
@@ -138,6 +139,8 @@ namespace VsHx
                     case Key.U: ChangeCase(isShift); break;
                     case Key.J: JoinLines(); break;
                     case Key.S: Split(); break;
+                    case Key.F: FindSymbol(num, isShift, false); break;
+                    case Key.N: FindSymbol(num, isShift, true); break;
                 }
 
                 return;
@@ -200,10 +203,10 @@ namespace VsHx
                 int num = GetNumInput();
 
                 switch (e.Key) {
-                    case Key.W: MoveWordForward(num); break;
-                    case Key.B: MoveWordBackward(num); break;
                     case Key.E: MoveWordEnd(num); break;
                     case Key.X: SelectCurrentLine(num * (isShift ? -1 : 1)); break;
+                    case Key.W: MoveWordForward(num); break;
+                    case Key.B: MoveWordBackward(num); break;
                     case Key.F: MoveToSymbol(num, isShift, false); break;
                     case Key.T: MoveToSymbol(num, isShift, true); break;
                 }
@@ -237,8 +240,6 @@ namespace VsHx
                     case Key.I: MoveVertical(-1 * num, move); break;
                     case Key.J: MoveHorizontal(-1 * num, !snap); break;
                     case Key.L: MoveHorizontal(1 * num, !snap); break;
-                    case Key.W: MoveWordForward(num); break;
-                    case Key.B: MoveWordBackward(num); break;
                 }
 
                 ResetNumInput();
@@ -259,9 +260,11 @@ namespace VsHx
             switch (HxState.HxMode) {
                 case HxState.Mode.Split: SplitSelection(e.Text); break;
                 case HxState.Mode.Surround: OnSurround(e.Text); break;
+                case HxState.Mode.MoveToSymbol: FindSymbol(e.Text); break;
             }
 
             HxState.Reset();
+            HxState.StateHasChanged();
         }
 
 
@@ -470,7 +473,7 @@ namespace VsHx
             var view = _view;
             var sel = view.Selection;
 
-            if (sel.IsEmpty) return;
+            if (sel.IsEmpty && isWrap) return;
 
             HxState.HxMode = HxState.Mode.Surround;
             HxState.SOIsOutside = outside;
@@ -802,14 +805,62 @@ namespace VsHx
         }
 
         private void MoveToSymbol(int num, bool backward, bool till) {
-            string content = TakeSelection();
+            string content = TakeSelection().FirstOrDefault().ToString();
 
             HxState.HxMode = HxState.Mode.MoveToSymbol;
             HxState.StoredNum = num;
-            HxState.StoredStr = content;
             HxState.MTSIsTill = till;
             HxState.MTSIsBackward = backward;
             HxState.MTSSelect = HxState.ActionKey == "S";
+
+            if (content != null) {
+                FindSymbol(content);
+            }
+
+            HxState.StateHasChanged();
+        }
+
+        private void FindSymbol(string text) {
+            var view = _view;
+            var sel = view.Selection;
+            var caret = view.Caret;
+
+            if (string.IsNullOrEmpty(text)) return;
+            char c = text.First();
+
+            var snapshot = view.TextBuffer.CurrentSnapshot;
+            if (snapshot.Length == 0) return;
+
+            int caretPos = Clamp(caret.Position.BufferPosition.Position, 0, snapshot.Length);
+
+            int foundIndex = FindNext(snapshot, caretPos, c, HxState.MTSIsBackward);
+            if (foundIndex == -1) return;
+
+            foundIndex += 1;
+
+            if (HxState.MTSIsTill) foundIndex += !HxState.MTSIsBackward ? -1 : 1;
+
+            var target = new SnapshotPoint(snapshot, foundIndex);
+
+            if (HxState.MTSSelect) {
+                VirtualSnapshotPoint anchor = sel.IsEmpty ? caret.Position.VirtualBufferPosition : sel.AnchorPoint;
+                sel.Select(anchor, new VirtualSnapshotPoint(target));
+            }
+
+            caret.MoveTo(target);
+
+            HxState.Reset();
+            HxState.StateHasChanged();
+        }
+
+        private void FindSymbol(int num, bool backward, bool select) {
+            string content = TakeSelection();
+
+            HxState.HxMode = HxState.Mode.FindSymbol;
+            HxState.StoredNum = num;
+            HxState.StoredStr = content;
+            HxState.FSIsBackward = backward;
+            HxState.FSSelect = select;
 
             HxState.StateHasChanged();
         }
@@ -884,7 +935,7 @@ namespace VsHx
             if (HxState.SelectionMode) {
                 var targetV = new VirtualSnapshotPoint(target);
 
-                if (HxState.ActionKey != "B") {
+                if (HxState.ActionKey != "A") {
                     if (sel.Mode != TextSelectionMode.Stream) sel.Mode = TextSelectionMode.Stream;
 
                     var caretV = caret.Position.VirtualBufferPosition;
